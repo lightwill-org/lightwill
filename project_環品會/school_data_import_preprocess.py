@@ -123,3 +123,4 @@ if not any([i.title == 新增頁籤名稱 for i in 儲存位置.worksheets()]):
 # 注意匯入之DataFrame不能存在空值
 儲存位置.worksheet(新增頁籤名稱).update([報名資料.columns.values.tolist()] + 報名資料.values.tolist())
 
+
