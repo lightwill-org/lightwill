@@ -1,0 +1,56 @@
+# Pre-commit hooks configuration for Animal Abuse Crime Linkage Research
+# Install: pre-commit install
+# Run manually: pre-commit run --all-files
+#
+# NOTE: This config only checks project_aepa/ to avoid interfering with other projects
+# in this monorepo (project_NPO, project_千里, etc.)
+
+repos:
+  # Code formatting with ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.1
+    hooks:
+      # Linter
+      - id: ruff
+        args:
+          - --target-version=py311
+          - --select=E4,E7,E9,F,UP
+          - --ignore=UP038
+          - --fix
+          - --exit-non-zero-on-fix
+        files: ^project_aepa/
+        exclude: ^(project_NPO|project_千里)/
+      # Formatter
+      - id: ruff-format
+        args: [--target-version=py311]
+        files: ^project_aepa/
+        exclude: ^(project_NPO|project_千里)/
+
+  # Basic file checks (only for project_aepa)
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        files: ^project_aepa/
+      - id: end-of-file-fixer
+        files: ^project_aepa/
+      - id: check-yaml
+        files: ^project_aepa/
+      - id: check-json
+        files: ^project_aepa/
+      - id: check-added-large-files
+        args: ["--maxkb=10000"] # 10MB limit
+        files: ^project_aepa/
+      - id: check-merge-conflict
+        files: ^project_aepa/
+      - id: detect-private-key
+        files: ^project_aepa/
+
+  # Secrets detection (only for project_aepa)
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        files: ^project_aepa/
+        exclude: ^(project_NPO|project_千里)/|package-lock\.json|\.secrets\.baseline

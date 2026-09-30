@@ -9,7 +9,6 @@ Requires system-level RAR tool (unar, unrar, or 7-Zip) as backend.
 import argparse
 import sys
 from pathlib import Path
-from typing import Optional, List, Tuple
 from multiprocessing import Pool, cpu_count
 
 try:
@@ -38,15 +37,15 @@ def normalize_month(month_str: str) -> str:
     """
     month_str = month_str.replace(".", "").replace("-", "")
     if len(month_str) != 6 or not month_str.isdigit():
-        raise ValueError(f"Invalid month format: {month_str}. Use YYYY.MM, YYYY-MM, or YYYYMM")
+        raise ValueError(
+            f"Invalid month format: {month_str}. Use YYYY.MM, YYYY-MM, or YYYYMM"
+        )
     return month_str
 
 
 def filter_rar_by_date_range(
-    rar_files: List[Path],
-    start_month: Optional[str],
-    end_month: Optional[str]
-) -> List[Path]:
+    rar_files: list[Path], start_month: str | None, end_month: str | None
+) -> list[Path]:
     """Filter RAR files by date range
 
     Args:
@@ -78,7 +77,9 @@ def filter_rar_by_date_range(
     return filtered
 
 
-def extract_rar_worker(args: Tuple[Path, Optional[Path], bool, bool, int, int]) -> Tuple[bool, str, str]:
+def extract_rar_worker(
+    args: tuple[Path, Path | None, bool, bool, int, int],
+) -> tuple[bool, str, str]:
     """Worker function for multiprocessing
 
     Args:
@@ -96,7 +97,11 @@ def extract_rar_worker(args: Tuple[Path, Optional[Path], bool, bool, int, int]) 
     if not force and output_dir.exists():
         files = list(output_dir.iterdir())
         if files:
-            return True, rar_path.name, f"[{idx}/{total}] ⊘ Skipping (already extracted): {rar_path.name}"
+            return (
+                True,
+                rar_path.name,
+                f"[{idx}/{total}] ⊘ Skipping (already extracted): {rar_path.name}",
+            )
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -104,14 +109,18 @@ def extract_rar_worker(args: Tuple[Path, Optional[Path], bool, bool, int, int]) 
         patoolib.extract_archive(str(rar_path), outdir=str(output_dir), verbosity=-1)
         return True, rar_path.name, f"[{idx}/{total}] ✓ Extracted: {rar_path.name}"
     except Exception as e:
-        return False, rar_path.name, f"[{idx}/{total}] ✗ Extraction failed: {rar_path.name} - {e}"
+        return (
+            False,
+            rar_path.name,
+            f"[{idx}/{total}] ✗ Extraction failed: {rar_path.name} - {e}",
+        )
 
 
 def extract_rar(
     rar_path: Path,
-    output_dir: Optional[Path] = None,
+    output_dir: Path | None = None,
     verbose: bool = True,
-    force: bool = False
+    force: bool = False,
 ) -> bool:
     """Extract a RAR file using patool
 
@@ -151,7 +160,7 @@ def extract_rar(
     try:
         patoolib.extract_archive(str(rar_path), outdir=str(output_dir), verbosity=-1)
         if verbose:
-            print(f"✓ Extracted successfully")
+            print("✓ Extracted successfully")
         return True
     except Exception as e:
         print(f"✗ Extraction failed: {e}")
@@ -163,9 +172,9 @@ def extract_all(
     output_dir: Path = None,
     pattern: str = "*.rar",
     force: bool = False,
-    start_month: Optional[str] = None,
-    end_month: Optional[str] = None,
-    workers: Optional[int] = None
+    start_month: str | None = None,
+    end_month: str | None = None,
+    workers: int | None = None,
 ) -> tuple[int, int, int]:
     """Extract all RAR files in a directory with multiprocessing
 
@@ -199,25 +208,25 @@ def extract_all(
     rar_files = filter_rar_by_date_range(rar_files, start_month, end_month)
 
     if not rar_files:
-        print(f"✗ No RAR files found in specified date range")
+        print("✗ No RAR files found in specified date range")
         return 0, 0, 0
 
     # Determine number of workers
     if workers is None:
         workers = cpu_count()
 
-    print(f"\n{'='*60}")
-    print(f"RAR Extraction")
-    print(f"{'='*60}")
+    print(f"\n{'=' * 60}")
+    print("RAR Extraction")
+    print(f"{'=' * 60}")
     print(f"Source: {source_dir}")
     print(f"Found: {len(rar_files)} RAR files")
     if start_month or end_month:
         range_str = f"{start_month or 'start'} - {end_month or 'end'}"
         print(f"Date range: {range_str}")
     if force:
-        print(f"Mode: Force re-extraction")
+        print("Mode: Force re-extraction")
     print(f"Workers: {workers} (CPU cores: {cpu_count()})")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # Prepare tasks
     tasks = []
@@ -230,6 +239,7 @@ def extract_all(
 
     # Extract with multiprocessing
     import time
+
     start_time = time.time()
 
     success_count = 0
@@ -237,7 +247,9 @@ def extract_all(
     failed_files = []
 
     with Pool(processes=workers) as pool:
-        for success, rar_name, message in pool.imap_unordered(extract_rar_worker, tasks):
+        for success, rar_name, message in pool.imap_unordered(
+            extract_rar_worker, tasks
+        ):
             print(message)
 
             if success:
@@ -251,21 +263,21 @@ def extract_all(
     elapsed = time.time() - start_time
 
     # Summary
-    print(f"\n{'='*60}")
-    print(f"Extraction completed in {elapsed:.1f} seconds ({elapsed/60:.1f} minutes)")
+    print(f"\n{'=' * 60}")
+    print(f"Extraction completed in {elapsed:.1f} seconds ({elapsed / 60:.1f} minutes)")
     print(f"Extracted: {success_count}/{len(rar_files)}")
     if skipped_count > 0:
         print(f"Skipped (already extracted): {skipped_count}/{len(rar_files)}")
-    print(f"Average speed: {len(rar_files)/elapsed:.1f} files/second")
+    print(f"Average speed: {len(rar_files) / elapsed:.1f} files/second")
 
     if failed_files:
         print(f"\nFailed files ({len(failed_files)}):")
         for filename in failed_files:
             print(f"  - {filename}")
     else:
-        print(f"\n✓ All files processed successfully!")
+        print("\n✓ All files processed successfully!")
 
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     return success_count, skipped_count, len(rar_files)
 
@@ -298,49 +310,47 @@ Examples:
 
   # Extract to specific directory
   python extract_rar.py data/raw/monthly_packages/199601.rar /path/to/output
-        """
+        """,
     )
 
     parser.add_argument(
-        'rar_file',
-        nargs='?',
-        help='Single RAR file to extract (optional)'
+        "rar_file", nargs="?", help="Single RAR file to extract (optional)"
     )
 
     parser.add_argument(
-        'output_dir',
-        nargs='?',
-        help='Output directory for single file extraction'
+        "output_dir", nargs="?", help="Output directory for single file extraction"
     )
 
     parser.add_argument(
-        '--force', '-f',
-        action='store_true',
-        help='Force re-extraction even if directory already exists'
+        "--force",
+        "-f",
+        action="store_true",
+        help="Force re-extraction even if directory already exists",
     )
 
     parser.add_argument(
-        '--source-dir',
+        "--source-dir",
         type=Path,
-        help='Source directory containing RAR files (default: data/raw/monthly_packages)'
+        help="Source directory containing RAR files (default: data/raw/monthly_packages)",
     )
 
     parser.add_argument(
-        '--start-month',
-        dest='start_month',
-        help='Start month (YYYY.MM, YYYY-MM, or YYYYMM format, e.g., "1996.01")'
+        "--start-month",
+        dest="start_month",
+        help='Start month (YYYY.MM, YYYY-MM, or YYYYMM format, e.g., "1996.01")',
     )
 
     parser.add_argument(
-        '--end-month',
-        dest='end_month',
-        help='End month (YYYY.MM, YYYY-MM, or YYYYMM format, e.g., "2026.07")'
+        "--end-month",
+        dest="end_month",
+        help='End month (YYYY.MM, YYYY-MM, or YYYYMM format, e.g., "2026.07")',
     )
 
     parser.add_argument(
-        '--workers', '-w',
+        "--workers",
+        "-w",
         type=int,
-        help=f'Number of worker processes (default: {cpu_count()} CPU cores)'
+        help=f"Number of worker processes (default: {cpu_count()} CPU cores)",
     )
 
     args = parser.parse_args()
@@ -370,13 +380,15 @@ Examples:
         # Extract all files
         print("Extracting RAR files from monthly packages...")
         if not args.force:
-            print("(Already extracted files will be skipped. Use --force to re-extract.)\n")
+            print(
+                "(Already extracted files will be skipped. Use --force to re-extract.)\n"
+            )
         extract_all(
             source_dir=args.source_dir,
             force=args.force,
             start_month=start_month,
             end_month=end_month,
-            workers=args.workers
+            workers=args.workers,
         )
 
 

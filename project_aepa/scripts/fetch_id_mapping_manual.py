@@ -20,7 +20,6 @@ from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import NoSuchElementException
 
 
 OUTPUT_FILE = Path(__file__).parent.parent / "data" / "id_mapping.json"
@@ -28,9 +27,9 @@ OUTPUT_FILE = Path(__file__).parent.parent / "data" / "id_mapping.json"
 
 def connect_to_browser():
     """Connect to already-running Chrome with remote debugging enabled"""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Connecting to your Chrome browser...")
-    print("="*60)
+    print("=" * 60)
 
     chrome_options = Options()
     chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
@@ -42,7 +41,9 @@ def connect_to_browser():
     except Exception as e:
         print(f"\n✗ Connection failed: {e}")
         print("\nMake sure Chrome is running with:")
-        print('  /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222')
+        print(
+            "  /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222"
+        )
         return None
 
 
@@ -67,7 +68,7 @@ def extract_month_id_mapping(driver):
                     continue
 
                 # Extract ID from URL
-                id_match = re.search(r'FilesetLists/(\d+)/', href)
+                id_match = re.search(r"FilesetLists/(\d+)/", href)
                 if not id_match:
                     continue
 
@@ -83,19 +84,21 @@ def extract_month_id_mapping(driver):
 
                         # Look for title element
                         try:
-                            title_elem = parent.find_element(By.CSS_SELECTOR, "li.title")
+                            title_elem = parent.find_element(
+                                By.CSS_SELECTOR, "li.title"
+                            )
                             title_text = title_elem.text.strip()
                             break
-                        except:
+                        except Exception:
                             pass
-                    except:
+                    except Exception:
                         break
 
                 if not title_text:
                     continue
 
                 # Extract month (YYYYMM format) from title
-                match = re.search(r'(\d{6})', title_text)
+                match = re.search(r"(\d{6})", title_text)
                 if not match:
                     continue
 
@@ -103,7 +106,7 @@ def extract_month_id_mapping(driver):
                 mappings[month_str] = file_id
                 print(f"    {month_str} → {file_id}")
 
-            except Exception as e:
+            except Exception:
                 continue
 
     except Exception as e:
@@ -116,16 +119,22 @@ def scrape_all_pages(driver):
     """Scrape all pages of judgment datasets"""
     all_mappings = {}
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Starting to scrape ID mappings...")
-    print("="*60)
+    print("=" * 60)
     print("\nTip: You can manually navigate between pages,")
     print("     or let the script auto-navigate (press Enter)")
-    print("="*60 + "\n")
+    print("=" * 60 + "\n")
 
     # Get base URL from current page
     current_url = driver.current_url
-    base_url = current_url.split('&page=')[0] if '&page=' in current_url else current_url.split('?page=')[0] if '?page=' in current_url else current_url
+    base_url = (
+        current_url.split("&page=")[0]
+        if "&page=" in current_url
+        else current_url.split("?page=")[0]
+        if "?page=" in current_url
+        else current_url
+    )
 
     page = 1
 
@@ -149,15 +158,15 @@ def scrape_all_pages(driver):
 
         choice = input("Choice: ").strip().lower()
 
-        if choice == 'q':
+        if choice == "q":
             print("\nStopping...")
             break
-        elif choice == 'm':
+        elif choice == "m":
             input("\nNavigate to next page manually, then press Enter...")
         else:
             # Auto-navigate to next page
             page += 1
-            separator = '&' if '?' in base_url else '?'
+            separator = "&" if "?" in base_url else "?"
             url = f"{base_url}{separator}page={page}"
 
             print(f"  Navigating to: {url}")
@@ -166,11 +175,13 @@ def scrape_all_pages(driver):
 
             # Check if page loaded successfully
             try:
-                rar_links = driver.find_elements(By.CSS_SELECTOR, "a.badge.badge-RAR-brd-r")
+                rar_links = driver.find_elements(
+                    By.CSS_SELECTOR, "a.badge.badge-RAR-brd-r"
+                )
                 if len(rar_links) == 0:
                     print("  No more data found. Reached end.")
                     break
-            except:
+            except Exception:
                 print("  Page load failed. Stopping.")
                 break
 
@@ -179,9 +190,9 @@ def scrape_all_pages(driver):
 
 def main():
     """Main function"""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Judicial Yuan ID Mapping Scraper (Manual Mode)")
-    print("="*60 + "\n")
+    print("=" * 60 + "\n")
 
     # Connect to browser
     driver = connect_to_browser()
@@ -190,7 +201,9 @@ def main():
         print("\n✗ Failed to connect. Exiting.")
         print("\nQuick start:")
         print("1. Close all Chrome windows")
-        print("2. Run: /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222")
+        print(
+            "2. Run: /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222"
+        )
         print("3. Login to opendata.judicial.gov.tw")
         print("4. Navigate to judgment dataset page")
         print("5. Run this script again")
@@ -214,9 +227,9 @@ def main():
         all_mappings = scrape_all_pages(driver)
 
         # Save results
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print(f"Scraped {len(all_mappings)} month-to-ID mappings")
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
 
         if all_mappings:
             # Create output directory
@@ -226,7 +239,7 @@ def main():
             sorted_mappings = dict(sorted(all_mappings.items()))
 
             # Save to JSON
-            with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+            with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
                 json.dump(sorted_mappings, f, indent=2, ensure_ascii=False)
 
             print(f"✓ Saved to: {OUTPUT_FILE}")
@@ -236,7 +249,7 @@ def main():
             for month, file_id in list(sorted_mappings.items())[:5]:
                 print(f"  {month} → {file_id}")
             if len(sorted_mappings) > 10:
-                print(f"  ...")
+                print("  ...")
                 for month, file_id in list(sorted_mappings.items())[-5:]:
                     print(f"  {month} → {file_id}")
         else:
@@ -245,6 +258,7 @@ def main():
     except Exception as e:
         print(f"\n✗ Error: {e}")
         import traceback
+
         traceback.print_exc()
 
     finally:

@@ -25,8 +25,6 @@ import requests
 import getpass
 import argparse
 from pathlib import Path
-from datetime import datetime
-from typing import Optional, Dict, Tuple
 from dotenv import load_dotenv
 import urllib3
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -47,7 +45,7 @@ RETRY_DELAY = 5  # seconds
 MAX_WORKERS = 8  # concurrent downloads
 
 
-def load_id_mapping() -> Dict[str, int]:
+def load_id_mapping() -> dict[str, int]:
     """Load month-to-ID mapping from JSON file"""
     if not ID_MAPPING_FILE.exists():
         raise FileNotFoundError(
@@ -55,7 +53,7 @@ def load_id_mapping() -> Dict[str, int]:
             f"Please run the ID mapping collection script first."
         )
 
-    with open(ID_MAPPING_FILE, 'r', encoding='utf-8') as f:
+    with open(ID_MAPPING_FILE, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -63,8 +61,8 @@ class JudicialDownloader:
     def __init__(self, account: str, password: str, verify_ssl: bool = True):
         self.account = account
         self.password = password
-        self.token: Optional[str] = None
-        self.token_expires: Optional[str] = None
+        self.token: str | None = None
+        self.token_expires: str | None = None
         self.session = requests.Session()
         self.verify_ssl = verify_ssl
         self.id_mapping = load_id_mapping()
@@ -78,17 +76,14 @@ class JudicialDownloader:
         """Get authentication token"""
         print("Authenticating...")
 
-        payload = {
-            "memberAccount": self.account,
-            "pwd": self.password
-        }
+        payload = {"memberAccount": self.account, "pwd": self.password}
 
         try:
             response = self.session.post(
                 AUTH_ENDPOINT,
                 json=payload,
                 headers={"Content-Type": "application/json"},
-                verify=self.verify_ssl
+                verify=self.verify_ssl,
             )
             response.raise_for_status()
 
@@ -97,18 +92,28 @@ class JudicialDownloader:
             if "token" in data:
                 self.token = data["token"]
                 self.token_expires = data.get("expires", "unknown")
-                print(f"✓ Authentication successful")
+                print("✓ Authentication successful")
                 print(f"  Token expires: {self.token_expires}")
                 return True
             else:
-                print(f"✗ Authentication failed: {data.get('message', 'Unknown error')}")
+                print(
+                    f"✗ Authentication failed: {data.get('message', 'Unknown error')}"
+                )
                 return False
 
         except Exception as e:
             print(f"✗ Authentication error: {e}")
             return False
 
-    def download_file(self, file_id: int, year: int, month: int, force: bool = False, idx: int = 0, total: int = 0) -> Tuple[bool, str]:
+    def download_file(
+        self,
+        file_id: int,
+        year: int,
+        month: int,
+        force: bool = False,
+        idx: int = 0,
+        total: int = 0,
+    ) -> tuple[bool, str]:
         """Download a single monthly package with Content-Length verification
 
         Returns:
@@ -133,17 +138,23 @@ class JudicialDownloader:
             try:
                 prefix = f"[{idx}/{total}]" if total > 0 else ""
 
-                response = self.session.get(url, headers=headers, stream=True, timeout=300, verify=self.verify_ssl)
+                response = self.session.get(
+                    url,
+                    headers=headers,
+                    stream=True,
+                    timeout=300,
+                    verify=self.verify_ssl,
+                )
                 response.raise_for_status()
 
                 # Get expected file size from Content-Length header
-                expected_size = response.headers.get('Content-Length')
+                expected_size = response.headers.get("Content-Length")
                 if expected_size:
                     expected_size = int(expected_size)
 
                 # Write to file
                 downloaded_size = 0
-                with open(filepath, 'wb') as f:
+                with open(filepath, "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
@@ -156,8 +167,8 @@ class JudicialDownloader:
                     # Size mismatch - file incomplete
                     filepath.unlink()
                     raise ValueError(
-                        f"Size mismatch: expected {expected_size/1024/1024:.2f} MB, "
-                        f"got {actual_size/1024/1024:.2f} MB"
+                        f"Size mismatch: expected {expected_size / 1024 / 1024:.2f} MB, "
+                        f"got {actual_size / 1024 / 1024:.2f} MB"
                     )
 
                 file_size_mb = actual_size / (1024 * 1024)
@@ -174,7 +185,12 @@ class JudicialDownloader:
 
         return False, f"{prefix} ✗ {filename} failed after {RETRY_TIMES} attempts"
 
-    def download_all(self, start_month: Optional[str] = None, end_month: Optional[str] = None, force: bool = False):
+    def download_all(
+        self,
+        start_month: str | None = None,
+        end_month: str | None = None,
+        force: bool = False,
+    ):
         """Download all monthly packages with concurrent workers
 
         Args:
@@ -197,13 +213,13 @@ class JudicialDownloader:
             print("No months to download in specified range")
             return
 
-        print(f"\n{'='*60}")
-        print(f"Judicial Yuan Monthly Packages Downloader")
-        print(f"{'='*60}")
+        print(f"\n{'=' * 60}")
+        print("Judicial Yuan Monthly Packages Downloader")
+        print(f"{'=' * 60}")
         print(f"Download directory: {DOWNLOAD_DIR}")
         print(f"Date range: {all_months[0]} - {all_months[-1]} (Total: {total} files)")
         print(f"Concurrent workers: {MAX_WORKERS}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         # Create download directory
         DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -213,7 +229,7 @@ class JudicialDownloader:
             print("\n✗ Authentication failed. Exiting.")
             return
 
-        print(f"\nStarting concurrent download...\n")
+        print("\nStarting concurrent download...\n")
 
         # Track progress
         success_count = 0
@@ -232,7 +248,9 @@ class JudicialDownloader:
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             # Submit all tasks
             future_to_task = {
-                executor.submit(self.download_file, file_id, year, month, force, idx, total): (month_str, file_id)
+                executor.submit(
+                    self.download_file, file_id, year, month, force, idx, total
+                ): (month_str, file_id)
                 for file_id, year, month, idx in tasks
             }
 
@@ -258,10 +276,12 @@ class JudicialDownloader:
 
         # Summary
         elapsed = time.time() - start_time
-        print(f"\n{'='*60}")
-        print(f"Download completed in {elapsed:.1f} seconds ({elapsed/60:.1f} minutes)")
+        print(f"\n{'=' * 60}")
+        print(
+            f"Download completed in {elapsed:.1f} seconds ({elapsed / 60:.1f} minutes)"
+        )
         print(f"Success: {success_count}/{total}")
-        print(f"Average speed: {total/elapsed:.1f} files/second")
+        print(f"Average speed: {total / elapsed:.1f} files/second")
 
         if failed_items:
             print(f"\nFailed downloads ({len(failed_items)}):")
@@ -270,9 +290,9 @@ class JudicialDownloader:
                 month = int(month_str[4:6])
                 print(f"  - {year}.{month:02d} (ID: {file_id})")
         else:
-            print(f"\n✓ All files downloaded successfully!")
+            print("\n✓ All files downloaded successfully!")
 
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
 
 def parse_year_month(ym_string: str) -> str:
@@ -288,12 +308,14 @@ def parse_year_month(ym_string: str) -> str:
         return ym_string
 
     # Parse other formats
-    if '.' in ym_string:
-        year, month = ym_string.split('.')
-    elif '-' in ym_string:
-        year, month = ym_string.split('-')
+    if "." in ym_string:
+        year, month = ym_string.split(".")
+    elif "-" in ym_string:
+        year, month = ym_string.split("-")
     else:
-        raise ValueError(f"Invalid format: {ym_string}. Use YYYY.MM, YYYY-MM, or YYYYMM")
+        raise ValueError(
+            f"Invalid format: {ym_string}. Use YYYY.MM, YYYY-MM, or YYYYMM"
+        )
 
     return f"{int(year):04d}{int(month):02d}"
 
@@ -301,24 +323,30 @@ def parse_year_month(ym_string: str) -> str:
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description='Download monthly judgment packages from Judicial Yuan Open Data Platform',
+        description="Download monthly judgment packages from Judicial Yuan Open Data Platform",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='''
+        epilog="""
 Examples:
   %(prog)s                          # Download all (1996.01 - 2026.07)
   %(prog)s 1996.01 1996.03          # Download specific range
   %(prog)s 2020.01 2020.12          # Download year 2020
   %(prog)s --force                  # Force re-download all files
   %(prog)s --no-ssl-verify          # Disable SSL verification (not recommended)
-        '''
+        """,
     )
 
-    parser.add_argument('start', nargs='?', help='Start date (YYYY.MM, YYYY-MM, or YYYYMM)')
-    parser.add_argument('end', nargs='?', help='End date (YYYY.MM, YYYY-MM, or YYYYMM)')
-    parser.add_argument('--force', '-f', action='store_true',
-                        help='Force re-download existing files')
-    parser.add_argument('--no-ssl-verify', action='store_true',
-                        help='Disable SSL certificate verification (use with caution)')
+    parser.add_argument(
+        "start", nargs="?", help="Start date (YYYY.MM, YYYY-MM, or YYYYMM)"
+    )
+    parser.add_argument("end", nargs="?", help="End date (YYYY.MM, YYYY-MM, or YYYYMM)")
+    parser.add_argument(
+        "--force", "-f", action="store_true", help="Force re-download existing files"
+    )
+    parser.add_argument(
+        "--no-ssl-verify",
+        action="store_true",
+        help="Disable SSL certificate verification (use with caution)",
+    )
 
     args = parser.parse_args()
 
@@ -376,7 +404,9 @@ Examples:
         print(f"End: {year}.{month:02d}")
 
     # Download
-    downloader.download_all(start_month=start_month, end_month=end_month, force=args.force)
+    downloader.download_all(
+        start_month=start_month, end_month=end_month, force=args.force
+    )
 
 
 if __name__ == "__main__":

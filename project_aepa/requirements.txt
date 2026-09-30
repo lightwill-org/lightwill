@@ -1,3 +1,4 @@
+# Core dependencies
 requests>=2.31.0
 python-dotenv>=1.0.0
 patool>=1.12  # Cross-platform archive extraction
@@ -6,3 +7,9 @@ webdriver-manager>=4.0.0  # Automatic webdriver management
 beautifulsoup4>=4.12.0
 pandas>=2.0.0  # Data processing
 pyarrow>=12.0.0  # Parquet file format
+dvc[gdrive]>=3.0.0  # Data version control with Google Drive backend
+
+# Development dependencies
+pre-commit>=3.0.0  # Git hooks for code quality
+ruff>=0.12.0  # Fast Python linter and formatter
+detect-secrets>=1.5.0  # Secrets detection

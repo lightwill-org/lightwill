@@ -66,14 +66,63 @@ pip install -r requirements.txt
 ```
 
 **Current dependencies:**
+
+Core dependencies:
 - `requests>=2.31.0` - HTTP library for API calls
 - `python-dotenv>=1.0.0` - Environment variable management
 - `patool>=1.12` - Cross-platform archive extraction
 - `pandas>=2.0.0` - Data processing and analysis
 - `pyarrow>=12.0.0` - Parquet file format support
-- `dvc[gdrive]` - Data version control with Google Drive backend
+- `dvc[gdrive]>=3.0.0` - Data version control with Google Drive backend
 
-### 3. Deactivate When Done
+Development dependencies:
+- `pre-commit>=3.0.0` - Git hooks for code quality
+- `ruff>=0.12.0` - Fast Python linter and formatter
+- `detect-secrets>=1.5.0` - Secrets detection
+
+### 3. Setup Pre-commit Hooks
+
+Pre-commit hooks automatically check code quality before each commit.
+
+**What's included:**
+- **Ruff**: Fast Python linter and formatter
+- **Basic checks**: Trailing whitespace, file endings, YAML/JSON validation
+- **Secrets detection**: Prevents committing API keys, tokens, passwords
+
+**Setup:**
+
+```bash
+# Generate secrets baseline (first time only)
+detect-secrets scan > .secrets.baseline
+
+# Install pre-commit hooks
+pre-commit install
+
+# (Optional) Run on all files to test
+pre-commit run --all-files
+```
+
+**Usage:**
+
+Pre-commit will run automatically on `git commit`. If any check fails:
+- Ruff will auto-fix formatting issues
+- Review the changes and add them: `git add .`
+- Commit again
+
+**Manual run:**
+
+```bash
+# Run on staged files
+pre-commit run
+
+# Run on all files
+pre-commit run --all-files
+
+# Run specific hook
+pre-commit run ruff --all-files
+```
+
+### 4. Deactivate When Done
 
 ```bash
 deactivate
