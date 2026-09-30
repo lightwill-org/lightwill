@@ -89,10 +89,16 @@ Pre-commit hooks automatically check code quality before each commit.
 - **Basic checks**: Trailing whitespace, file endings, YAML/JSON validation
 - **Secrets detection**: Prevents committing API keys, tokens, passwords
 
-**Setup:**
+**Setup (run from repo root):**
 
 ```bash
-# Generate secrets baseline (first time only)
+# Navigate to repo root (lightwill/)
+cd ~/dev/lightwill
+
+# Activate virtual environment
+source project_aepa/.venv/bin/activate
+
+# Generate secrets baseline (first time only, if not exists)
 detect-secrets scan > .secrets.baseline
 
 # Install pre-commit hooks
@@ -101,6 +107,8 @@ pre-commit install
 # (Optional) Run on all files to test
 pre-commit run --all-files
 ```
+
+**Note**: Pre-commit is configured to only check `project_aepa/` files, other projects in this monorepo are not affected.
 
 **Usage:**
 
