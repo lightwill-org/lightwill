@@ -1,0 +1,31 @@
+# Credentials
+.env
+
+# Downloaded data (but keep .dvc files)
+/data/*
+!/data/*.dvc
+!/data/README.md
+!/data/.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
