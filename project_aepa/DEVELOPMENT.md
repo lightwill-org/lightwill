@@ -89,30 +89,44 @@ Pre-commit hooks automatically check code quality before each commit.
 - **Basic checks**: Trailing whitespace, file endings, YAML/JSON validation
 - **Secrets detection**: Prevents committing API keys, tokens, passwords
 
-**Setup (run from repo root):**
+**One-time Setup:**
 
 ```bash
-# Navigate to repo root (lightwill/)
-cd ~/dev/lightwill
-
-# Activate virtual environment
-source project_aepa/.venv/bin/activate
-
-# Generate secrets baseline (first time only, if not exists)
-detect-secrets scan > .secrets.baseline
-
-# Install pre-commit hooks
+# Option 1: From project_aepa directory (recommended)
+cd ~/dev/lightwill/project_aepa
+source .venv/bin/activate
+cd ..  # Go to repo root
+detect-secrets scan > .secrets.baseline  # First time only, if not exists
 pre-commit install
 
-# (Optional) Run on all files to test
-pre-commit run --all-files
+# Option 2: From repo root
+cd ~/dev/lightwill
+source project_aepa/.venv/bin/activate
+detect-secrets scan > .secrets.baseline  # First time only, if not exists
+pre-commit install
 ```
 
-**Note**: Pre-commit is configured to only check `project_aepa/` files, other projects in this monorepo are not affected.
+**Daily Usage (work in project_aepa as usual):**
 
-**Usage:**
+```bash
+# Work in project_aepa directory (your normal workflow)
+cd ~/dev/lightwill/project_aepa
 
-Pre-commit will run automatically on `git commit`. If any check fails:
+# Edit code...
+vim scripts/xxx.py
+
+# Commit directly from here (pre-commit runs automatically)
+git add .
+git commit -m "your message"
+# ✅ Pre-commit will check your changes automatically
+```
+
+**Note**:
+- Pre-commit is configured to only check `project_aepa/` files
+- Other projects in this monorepo are not affected
+- You can commit from any directory, pre-commit will still work
+
+**If pre-commit check fails:**
 - Ruff will auto-fix formatting issues
 - Review the changes and add them: `git add .`
 - Commit again
