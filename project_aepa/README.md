@@ -1,5 +1,9 @@
 # Animal Abuse and Crime Linkage Research
 
+> **Continuing development? Read [DEVLOG.md](DEVLOG.md) first.**
+> Its *Current State* section has the pipeline, commands, known issues and next steps;
+> its *Log* explains why each decision was made. This README only covers setup and data.
+
 Research project analyzing the correlation between animal abuse and subsequent violent crimes through judicial judgment data analysis.
 
 ## Project Overview
@@ -82,30 +86,8 @@ For detailed instructions, see [QUICKSTART.md](QUICKSTART.md).
 
 ## Project Status
 
-**Phase**: Data Ready for Analysis
-**Current**: 7.73 million criminal cases processed and ready
-**Next**: Filter animal abuse cases and extract prior conviction information
-
-### Completed
-- ✅ Data source verification and licensing review
-- ✅ API authentication and download script (367 monthly packages, 1996.01-2026.07)
-- ✅ Full data download completed (~52GB compressed)
-- ✅ RAR extraction pipeline (concurrent processing with multiprocessing)
-- ✅ JSON processing (22.5 million files → 7.73 million criminal cases)
-- ✅ DVC data versioning setup (13GB processed data on Google Drive)
-- ✅ Structured datasets:
-  - CSV: 7.73 million case summaries (1.2GB)
-  - Parquet: Complete judgment text (12GB, batch files)
-
-### In Progress
-- 🔄 Filter animal abuse related cases
-- 🔄 Extract prior conviction information from judgment text
-
-### Planned
-- Animal-first keyword search strategy
-- Crime-first search strategy
-- Statistical analysis and correlation study
-- Visualization and reporting
+See the *Current State* section of [DEVLOG.md](DEVLOG.md). It is the single place where
+status is kept up to date.
 
 ## Research Design
 
@@ -115,7 +97,9 @@ This project uses a **retrospective approach** rather than prospective tracking:
 
 **Methodology**: Extract prior conviction narratives from criminal judgments, as judgments typically contain the defendant's criminal history within a single document.
 
-**Data Limitation**: Cross-judgment person matching is not feasible due to redacted names in public judgments.
+**Cross-judgment linking**: Defendant names are masked before ~2011 but public afterwards,
+so judgments from 2011 on can be linked through cited prior case numbers and hashed
+defendant names (see DEVLOG, 2026-11-23).
 
 For detailed research design, see [animal-abuse-crime-linkage-data-plan.md](animal-abuse-crime-linkage-data-plan.md).
 

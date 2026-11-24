@@ -82,6 +82,39 @@
 - 每份判決抽出：本案犯行 + 前案清單（罪名、時間、法院、執行完畢日）
 - 後案追蹤（虐待動物之後又犯了什麼）較弱，需靠後續判決提到動保前科來反向索引
 
+### 2.2.1 Update (2026-11-23): Defendant names are public from ~2011
+
+Section 2.1 assumed defendant names are masked. A check on 125,535 sampled judgments
+(`scripts/check_identity_linkage.py`) shows this only holds before ROC 99 (2010):
+
+| ROC year | Defendant full name in header | Masked (甲○○) |
+|---|---|---|
+| 85-98 | 1-12% | 66-84% |
+| 99 | 42% (transition) | - |
+| 100-115 | ~90% | ~1% |
+
+Other findings:
+- Birth date / ID number almost never appear (<1%), so same-name collisions cannot be
+  resolved directly. Example: 陳建宏 appears 24 times in a 1.6% sample.
+- 15-30% of judgments describe prior records; 50-69% of those cite a prior case number,
+  which links to the prior judgment exactly.
+- Appeal judgments always cite the lower-court case number (usable for appeal dedup).
+
+Revised linking strategy (three tiers):
+
+| Tier | Method | Reliability | Coverage |
+|---|---|---|---|
+| 1 | Case numbers cited in prior-record text → prior judgment | Exact | All years |
+| 2 | Defendant name match, restricted to rare names + same court region | Probabilistic; validate by manual sample | ROC 100+ |
+| 3 | Prior-record text within the judgment (crime name, dates) | Crime name only | All years; main source before 2011 |
+
+Consequence: for judgments from 2011 on, forward tracking ("what did abuse defendants do
+later") becomes possible, not only the retrospective direction in 2.3.
+
+⚠️ Privacy: cross-judgment name linking builds person-level criminal histories. Store
+names only as hashes in analysis outputs, and confirm whether the Judicial Yuan open data
+terms restrict re-identification across judgments (see section 12).
+
 ### 2.3 研究問題方向要從「前瞻」改成「回溯」
 
 | 方向 | 問法 | 資料可行性 |
@@ -274,6 +307,30 @@ API 的 `JFULLTYPE` 有兩種型態：
 建議在分析設計階段就把法規變動時間點當成控制變項或斷點，而非事後補說明。
 趨勢圖最容易被外界拿去下錯結論，對外呈現時特別危險。
 
+### 6.2 Source Reliability Check (2026-11-24)
+
+Decision: the Judicial Yuan open data is the only source. No extra collection; we only
+record its known limits.
+
+Additional known limits (from Judicial Yuan notes and JRF articles):
+- Domestic violence: protection-order (family) rulings are not published. Criminal DV
+  judgments do appear (e.g. 家暴傷害 titles found in prior links), but coverage is unverified.
+- Publication is decided by an automated program that is not 100% accurate, so some
+  judgments that should be public may be missing (unpredictable, sporadic gaps).
+- Judgments can be edited or withdrawn after upload; our copy is a snapshot.
+
+Checks on our data (summary CSV, 7.73M documents):
+
+| Check | Result | Implication |
+|---|---|---|
+| Documents without text (<50 chars) | 0.02% overall; ≤2.25% before 2000, ~0% from 2005 | Full-text pipeline misses almost nothing |
+| Yearly volume | ~9k/year in 1996–1999, 158k in 2000, 270k–400k/year after 2007 | Before 2000 only the Supreme Court is covered: effective start is 2000 |
+| 2021 dip (270k vs ~325k) | Likely COVID-19 court slowdown | Note when reading 2021 trends |
+| 2026 | Partial year | Exclude from yearly comparisons; forward follow-up is shortest |
+
+Skipped on purpose (results would not change our design): per-court monthly gap scan,
+comparison with Judicial Statistics case counts, confirming legally unpublished categories.
+
 ---
 
 ## 7. 資料架構
@@ -351,6 +408,53 @@ Crime-first 的價值在於捕捉這類案件：
 
 - 人為故意虐待
 - 威脅傷害動物（作為控制手段）
+
+### 7.3.1 Labeling Decisions (2026-11-22)
+
+Principle: **capture broadly, label granularly, decide inclusion at analysis time.**
+The LLM does not output a single yes/no; it outputs typed labels so that any
+subset can be included or excluded later without re-running the model.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Who is the perpetrator? | Only count harm done by the **defendant** of this judgment (needed to link to the defendant's prior record). Abuse by third parties is not counted. |
+| 2 | Negligence / neglect | Capture, but label separately: intentional harm, neglect/abandonment, traffic negligence. |
+| 3 | Verbal threats without action | Capture, labeled `threat_only`. |
+| 4 | Animal scope | Include all (pet, stray, livestock, wildlife); label the animal type. |
+| 5 | Acquitted / not proven | Capture, label the court's finding. Main analysis uses `convicted` only; sensitivity analysis uses all. |
+| 6 | Criminal damage (毀損) | Animals are legally property, so harming another person's animal is often charged as 毀損 (esp. before the Animal Protection Act was strengthened). Prior-record detection must cover 毀損 priors involving animals, not only 動物保護法. |
+| 7 | Appeal-level duplicates | Does not affect LLM classification. Deduplicate at analysis stage (inflates counts by up to 2-3x; biases ratios because serious cases are appealed more often). |
+
+Labeling runs in two LLM steps (a single 7-field pass with an 8B model was
+unreliable: it confused threats against people with threats against animals,
+labeled any traffic case as hitting an animal, and defaulted to the first enum
+option when unsure).
+
+Step 1, all candidates (evidence is written before the decision):
+
+```json
+{
+  "evidence": "original text snippet",
+  "actor": "no_one | defendant | other_person | unknown",
+  "involved": "no | yes | uncertain"
+}
+```
+
+Step 2, only for `involved` = yes / uncertain:
+
+```json
+{
+  "harm_type": "intentional | neglect_or_abandonment | negligent_injury | threat_only",
+  "animal_type": "pet | stray | livestock | wildlife | other",
+  "court_finding": "convicted | acquitted | not_addressed | unclear"
+}
+```
+
+Prior animal-related records (signal C) are detected separately by regex,
+because they can appear in judgments where step 1 is `no`.
+
+Manual labels: `data/labels/gold_v0.csv` (first 50 candidates; draft labels
+need human review). Evaluate with `scripts/evaluate_stage3.py`.
 
 ### 7.4 資料表設計
 
@@ -562,6 +666,16 @@ Pilot 測試通過後，對全部 7.73M 案件執行：
 3. Crime-first 的關鍵字清單與排除清單有無草稿
 4. 家暴通報 2,000 件／年的數字出處與可得顆粒度
 5. 社工危險係數評量表的「涉嫌虐殺動物」欄位資料能否取得（統計層級亦可）
+
+### 待確認（2026-11-23）
+- Whether the Judicial Yuan open data terms allow linking the same defendant across
+  judgments by name, and how names must be stored (hash only?)
+
+### 已決定（2026-11-22）
+- Labeling definitions: see section 7.3.1
+- Old data (1,500 + 500 records) is still useful as a partial Gold Set for recall,
+  but it is biased toward easy-to-find cases. A manually labeled Stage 2 sample is
+  also needed to measure LLM precision.
 
 ### 已確認（技術端）
 - ✅ opendata 平台最早可下載年份：**1996.01 - 2026.07**（367 個月）

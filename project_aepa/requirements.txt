@@ -9,6 +9,11 @@ pandas>=2.0.0  # Data processing
 pyarrow>=12.0.0  # Parquet file format
 dvc[gdrive]>=3.0.0  # Data version control with Google Drive backend
 
+# LLM verification (Stage 3)
+ollama  # Ollama Python client
+tqdm  # Progress bars
+psutil  # System memory / swap monitoring
+
 # Development dependencies
 pre-commit>=3.0.0  # Git hooks for code quality
 ruff>=0.12.0  # Fast Python linter and formatter
