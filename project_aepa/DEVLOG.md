@@ -25,6 +25,9 @@ Installation, data download and where each kind of data lives: [README.md](READM
 After setup, regenerate derived data with the commands below (steps 1-6). Do not run the
 same step on two machines at once.
 
+Two things are per-machine and in neither git nor DVC: `NAME_HASH_KEY` in `.env`, and the
+Google Drive OAuth client in `.dvc/config.local`. README covers both.
+
 All scripts run from `project_aepa/`. Long-running scripts take a memory limit argument and
 abort above it (macOS does not enforce RLIMIT_AS).
 
@@ -126,6 +129,191 @@ Facts for analysis: `facts`, else `combined`, else `attach_facts`. Judgments wit
 ---
 
 # Log
+
+## 2026-11-26 - New Machine Setup on the A6000: dvc pull Silently Pulled Nothing
+
+### A `/data/*` line in .gitignore stopped DVC from finding its own data
+
+`dvc pull` reported success on a clone with no data at all, and never contacted the remote:
+
+```
+Collecting                               |0.00 [00:00,    ?entry/s]
+Fetching
+Building workspace index                 |0.00 [00:00,    ?entry/s]
+Comparing indexes                        |1.00 [00:00, 6.81kentry/s]
+Applying changes                         |0.00 [00:00,     ?file/s]
+Everything is up to date.
+```
+
+`dvc status` agreed ("There are no data or pipelines tracked in this project yet"), but
+naming the file worked:
+
+```
+$ dvc status data/processed.dvc
+data/processed.dvc:
+	changed outs:
+		not in cache:       data/processed
+```
+
+`collect_files()` in `dvc/repo/index.py` decides whether to walk a directory with
+`is_ignored(f"{dir_path}{sep}")` - with a trailing slash. Dulwich lets the `*` in
+`/data/*` match the empty string, so `data/` reads as ignored. Git disagrees, so
+`git check-ignore` reports nothing wrong:
+
+```
+data/                     scm.is_ignored -> True
+data                      scm.is_ignored -> False
+data/processed.dvc        scm.is_ignored -> False
+
+$ git check-ignore -v data/ data data/processed.dvc
+(exit 1, no output)
+```
+
+DVC therefore never entered `data/`, collected zero stages, and had nothing to pull.
+
+Fix: the rules moved to `data/.gitignore` (`*` plus negations). `!/data/` and `!/data`
+in the root file do NOT work - anything matching `data/` with a trailing slash blocks the
+walk, `/data/*/` included. Listing each directory by name works but drops the catch-all,
+so a new data directory would be committed by accident. Tested:
+
+| Root .gitignore | Stages collected | Catch-all kept |
+|---|---|---|
+| `/data/*` (original) | 0 | yes |
+| `+ !/data/` | 0 | yes |
+| `+ !/data` | 0 | yes |
+| `/data/*/` | 0 | yes |
+| each directory by name | 1 | no |
+| rules in `data/.gitignore` | 1 | yes |
+
+### DVC's built-in Google OAuth client is dead
+
+Google shut down the client DVC falls back to
+(`710796635688-iivsgbgsb6uv1fap6635dhvuei09o66c`), so every machine needs its own client
+ID and secret in `.dvc/config.local`. That file is gitignored and was never documented, so
+a fresh clone had no way to reach the remote. README now has the Google Cloud walkthrough.
+It also records that the OAuth callback needs ports 8080 and 8090 forwarded on a headless
+machine, and that Testing-mode refresh tokens expire after 7 days.
+
+The old README sentence "on a headless server, `dvc pull` prints a Google sign-in URL to
+open elsewhere" was wrong twice: no URL appears without a client ID, and the URL alone is
+useless without the port forward.
+
+### The Google Drive remote is empty and cannot hold data/processed
+
+With the walk, the OAuth client and pyOpenSSL all fixed, `dvc pull` reached the remote and
+found nothing there:
+
+```
+WARNING: Some of the cache files do not exist neither locally nor on remote. Missing cache files:
+md5: b7c1cfa05e19f125d208f2a7999eec22.dir
+ERROR: failed to pull data from the cloud - Checkout failed for following targets:
+data/processed
+```
+
+The remote folder is real and reachable, just empty, and the account cannot hold the data:
+
+```
+folder   : "data", id 1xCFkJvc8uHG5h5ZbikD--3X0BJ9RVWIz, owner lightwill.org@gmail.com,
+           role owner, children 0, trash 0
+account  : 15.0 GB total, 0.1 GB used, 14.9 GB free, quotaType LIMITED
+needed   : 28.5 GiB (30,652,283,387 bytes, from data/processed.dvc)
+```
+
+No `files/` folder and no `.dir` object exists anywhere that account can see, shared drives
+included, so `dvc push` never succeeded from the Mac - it cannot: the data is roughly twice
+the free Gmail quota. Two other Drive folders named `data` belong to other volunteers and
+hold an unrelated manual spreadsheet collection.
+
+So `data/processed` has only ever existed on the Mac, and README's "Option 1: Use Processed
+Data (Recommended) - dvc pull" has never worked on a second machine. `data/verified` is
+small and still fits the free quota; only `data/processed` does not.
+
+Decision: the remote moved to a folder on a second personal account with room
+(`gdrive://1vXfULZePVcRGU4ljKN3cEgrrOpin5QFp`, inside "亞護會 2026", owner
+yaaaaam1@gmail.com). It is a personal My Drive, not a Shared Drive, and Drive bills an
+upload to the **uploader's** quota there, not the folder owner's: writer access from
+lightwill.org@gmail.com would still hit the same 15 GiB wall, so DVC has to authenticate
+as yaaaaam1@gmail.com. A Shared Drive would move the billing to the drive itself, but that
+needs Workspace.
+
+This does not move any data by itself. The new folder is empty, so the Mac still has to
+push 28.5 GiB into it before any other machine can pull. Copying `data/processed` off the
+Mac directly is one transfer instead of two.
+
+### Rebuilding from the open data platform instead of waiting for the Mac
+
+With no copy of `data/processed` reachable, the A6000 machine rebuilds it from source:
+download, extract, `process_judgments.py`. Budget ~232 GB of disk (52 GB RAR, ~150 GB
+extracted JSON, ~30 GB processed) against 2.6 TB free.
+
+`data/id_mapping.json` (month -> platform file ID) was missing: it is written by the
+`fetch_id_mapping*.py` scrapers and was never in git, so a fresh clone cannot download
+anything. The IDs are strictly sequential, `70325 + (year-1996)*12 + (month-1)`, so the
+file was regenerated from the formula - 367 entries, 199601 -> 70325 and 202607 -> 70691,
+matching the docstring - and is now tracked in git.
+
+The A6000 machine cannot download: the open data platform refuses connections from
+non-Taiwan addresses, and this machine egresses in Japan.
+
+```
+$ getent hosts opendata.judicial.gov.tw      -> 210.69.124.89
+$ curl -m 15 https://opendata.judicial.gov.tw/
+curl: (28) Connection timed out after 15000 ms   (connect=0.000000s, no TCP handshake)
+port 443 blocked/timeout, port 80 blocked/timeout
+$ curl https://www.google.com          -> 200 in 0.16 s
+$ curl https://www.judicial.gov.tw/    -> 302 in 0.45 s
+$ curl https://ipinfo.io/json          -> 60.34.127.119, Ise, Mie, JP, AS4713
+```
+
+So general internet and even `www.judicial.gov.tw` are fine; only the open data host is
+blocked. `download_monthly_packages.py` passes no `timeout` to `requests.post`, so it does
+not fail - it hangs at "Authenticating..." forever.
+
+Plan: download the monthly RAR packages on a machine in Taiwan, copy them over, and run
+`extract_rar.py` and `process_judgments.py` on the A6000. Moving the RARs (52 GB) rather
+than the extracted JSON (~150 GB) keeps the transfer small and the heavy parsing on the
+machine with the cores.
+
+`patoolib` needs a system RAR backend. This machine has p7zip 16.02, whose format list
+includes Rar and Rar5, so `unrar`/`unar` is not needed.
+
+The rebuilt data will not necessarily match the Mac's snapshot: the platform corrects and
+withdraws documents over time. A different candidate count from `build_stage3_input.py
+--test` is therefore not by itself a pipeline bug.
+
+### pyOpenSSL 22 breaks every Google Drive call
+
+With the walk fixed, `dvc pull` reached the remote and failed there:
+
+```
+Collecting                               |1.00 [00:00, 12.3entry/s]
+ERROR: failed to connect to gdrive (1xCFkJvc8uHG5h5ZbikD--3X0BJ9RVWIz/files/md5) - module 'lib' has no attribute 'GEN_EMAIL'
+Fetching
+ERROR: failed to pull data from the cloud - 1 files failed to download
+```
+
+`dvc[gdrive]` pulls pyOpenSSL in through pydrive2 and oauth2client, neither of which caps
+it, and a fresh install resolved 22.0.0 against cryptography 50.0.2. pyOpenSSL 22 reads
+`lib.GEN_EMAIL`, which modern cryptography no longer exports. `requirements.txt` now asks
+for `pyopenssl>=24.0.0`; 26.4.0 works.
+
+### This machine has a different NAME_HASH_KEY
+
+The Mac was not reachable and `.env` is in neither git nor DVC, so a new key was generated
+here. Name hashes on the two machines no longer match. Nothing was lost: `data/labels/`
+(`jid,title,involved,status,note`) carries no hashes, Stage 1-3 do not use them
+(`build_stage1_v2.py` only counts `defendant_hashes`), and `data/structured` and
+`data/index` are regenerated by scripts. If the Mac is used again, rebuild both there with
+the new key before comparing anything hash-based.
+
+### pandas pinned to 2.x in the venv
+
+A fresh install resolves `pandas>=2.0.0` to 3.1.1, while the Mac environment predates it.
+Pinned to 2.3.3 in the venv only; `requirements.txt` is unchanged, because the cross-machine
+check ("`build_stage3_input.py --test` gives the same 2,085 candidates") is meaningless if
+the two machines differ by a pandas major version. The scripts carry no pandas-3 breakage
+(no `inplace=`, `applymap` or `iteritems`), so the pin can be dropped once the counts match.
+
 
 ## 2026-11-26 - Stage 2 v3 and the Stage 2 / Stage 3 Split
 

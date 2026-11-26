@@ -1,13 +1,7 @@
 # Credentials
 .env
 
-# Downloaded data (but keep .dvc files)
-/data/*
-!/data/*.dvc
-!/data/README.md
-!/data/.gitignore
-# Human labels cannot be regenerated: keep them in git (JIDs and short notes, no names)
-!/data/labels/
+# Downloaded data: the rules live in data/.gitignore (see the note there)
 
 # Python
 __pycache__/

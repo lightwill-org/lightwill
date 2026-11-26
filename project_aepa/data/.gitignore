@@ -1,0 +1,17 @@
+# Ignore everything under data/ except the files that belong in git.
+#
+# These rules live HERE, not in the root .gitignore. A `/data/*` pattern in the root
+# file makes DVC read `data/` itself as ignored: its ignore check tests directories
+# with a trailing slash, and `*` matches the empty string, so `data/` matches. DVC then
+# never walks into data/, finds no .dvc file, collects zero stages and reports
+# "Everything is up to date" on pull without ever contacting the remote. Git disagrees
+# with DVC here, so `git check-ignore` shows nothing wrong.
+*
+!.gitignore
+!*.dvc
+!README.md
+# Month -> open data platform file ID, 1996.01-2026.07. Generated from the formula in
+# download_monthly_packages.py, needed before any download: keep it in git.
+!id_mapping.json
+# Human labels cannot be regenerated: keep them in git (JIDs and short notes, no names)
+!labels/
