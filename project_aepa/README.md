@@ -90,6 +90,30 @@ two machines will no longer link. Never change it once data has been built.
 LLM labels from a different model (e.g. a non-MLX model on a non-Mac machine) must be kept
 separate from existing ones.
 
+### Rebuilding derived data on a new machine
+
+Everything except `data/processed` (DVC) and `NAME_HASH_KEY` (copied by hand) is rebuilt
+by scripts; the commands are in DEVLOG *Current State → Commands*. The scripts are
+deterministic: the same `data/processed` gives the same outputs, including the `--test`
+samples. On a headless server, `dvc pull` prints a Google sign-in URL to open elsewhere.
+
+### LLM server (Stage 3)
+
+vLLM is not in `requirements.txt` because its install differs by platform. Install it in
+its own virtual environment (it pins its own PyTorch):
+
+| Platform | Install | Model |
+|---|---|---|
+| Linux + NVIDIA GPU | `pip install vllm` | `Qwen/Qwen3-8B` |
+| macOS (Apple Silicon) | vLLM with the vllm-metal plugin (follow its README) | `Qwen/Qwen3-8B-MLX-4bit` |
+
+```bash
+vllm serve <model> --max-model-len 8192 --port 8000
+```
+
+The model downloads from Hugging Face on first start. Labels from different models are
+written to different files (the model name is part of the file name).
+
 ### Option 2: Process Raw Data Yourself
 
 ```bash

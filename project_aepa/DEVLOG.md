@@ -91,7 +91,9 @@ Facts for analysis: `facts`, else `combined`, else `attach_facts`. Judgments wit
 ## Next Steps
 
 1. **Stage 3 on the test input (2,085 candidates, prompt p2)**, planned on the A6000
-   machine: copy `data/filtered/stage3_input_test.parquet` there (or rebuild it), then
+   machine, set up from the repo (README): `dvc pull`, `.env`, then `build_structured.py`,
+   `build_stage1_v2.py`, `filter_stage2_v3.py --test 300`, `build_stage3_input.py --test`
+   (should give the same 2,085 candidates), then
    `vllm serve Qwen/Qwen3-8B --max-model-len 8192 --port 8000` and
    `python scripts/filter_stage3_llm_verification_vllm.py Qwen/Qwen3-8B all 32 --test`.
    Labels from this model are a separate file (model name in the file name); compare
