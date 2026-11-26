@@ -21,13 +21,9 @@ group. Research questions and limits are in the plan document.
 
 ## Setup
 
-```bash
-cd project_aepa
-pip install -r requirements.txt
-dvc pull                       # data/processed: summary CSV + 13,042 Parquet batches
-cp .env.example .env           # set NAME_HASH_KEY (see .env.example); never change it
-                               # afterwards, or all name hashes become incompatible
-```
+Installation, data download and where each kind of data lives: [README.md](README.md).
+After setup, regenerate derived data with the commands below (steps 1-6). Do not run the
+same step on two machines at once.
 
 All scripts run from `project_aepa/`. Long-running scripts take a memory limit argument and
 abort above it (macOS does not enforce RLIMIT_AS).
@@ -173,6 +169,13 @@ documents 10/10 yes; tagged noise 15/16 no (nicknames, pigeon ransom, dog bites)
 - Co-defendants were labelled `other_person`: `defendant` now includes co-defendants.
 Outputs now carry a prompt version (`PROMPT_VERSION`, now p2) so labels from different
 prompts never mix in one resumable file.
+
+### Working across machines
+Only code and `data/processed.dvc` are in git. Human labels (`data/labels/`) cannot be
+regenerated, so they are now tracked in git. `build_stage1_v2.py` no longer reads the v1
+output file (timestamped name, would differ on another machine); it applies the same
+title rule itself (verified: identical 441 documents). Setup and the data location table
+live in README; DEVLOG only points there. Added `CLAUDE.md` with working rules.
 
 ### Stage 3 input and resume
 `build_stage3_input.py` replaces `extract_candidate_fulltext.py`: candidates = Stage 1 ∪

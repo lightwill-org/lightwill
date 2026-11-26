@@ -1,0 +1,51 @@
+jid,title,involved,status,note
+"TYDM,105,簡上,459,20170808,1",毀損,no,claude_draft,寵物美容糾紛，被告毀損寵物醫院財物
+"TYDM,106,壢簡,488,20170807,1",違反動物保護法,yes,claude_draft,將貓隻朝牆壁丟擲致死
+"TYDM,106,易,815,20170815,1",傷害,no,claude_draft,鄰居因犬隻管理爭執，被告傷害人
+"TYDM,106,審交易,94,20170818,1",過失傷害,no,claude_draft,飼主管束疏失，犬咬傷他人
+"MLDM,106,易,254,20170829,1",傷害,no,claude_draft,追逐小狗途中與人衝突
+"MLDM,106,易,315,20170815,1",毀損等,no,claude_draft,被告懷疑鄰居毒殺其犬，非被告虐待
+"TNDM,106,簡,1710,20170807,1",毀損,no,claude_draft,被告辯稱找流浪狗，實為毀損車輛
+"TNDM,106,簡,2023,20170809,1",妨害自由,no,claude_draft,綽號「阿狗」
+"TNDM,106,交簡上,104,20170809,1",過失傷害,no,claude_draft,車禍撞人，與動物無關
+"ULDM,106,交易,216,20170830,1",過失傷害,no,claude_draft,「貓眼」為道路反光設施
+"KSDM,105,審交易,1268,20170803,1",過失傷害,no,claude_draft,車禍撞人，與動物無關
+"NTDM,106,易,194,20170831,1",過失傷害,no,claude_draft,犬隻脫鍊咬傷他人
+"PCDM,105,訴,1166,20170811,1",公共危險等,no,claude_draft,比喻「乖的像狗一樣」
+"PCDM,105,重訴,32,20170831,4",殺人等,yes,claude_draft,殺人後將被害人犬隻棄置路旁（遺棄）
+"PCDM,106,簡,3334,20170823,1",妨害自由,unverified,claude_draft,被告辯稱持空氣槍要去打狗，需看全文
+"PCDM,106,交簡上,133,20170831,1",過失傷害,no,claude_draft,抓車內小狗未踩煞車撞人，動物未受害
+"PCDM,106,審易,2502,20170829,1",傷害,no,claude_draft,打狗的是告訴人，非被告
+"PCDM,105,易,1841,20170811,1",恐嚇取財等,unverified,claude_draft,evidence 為空，需看全文
+"PCDM,106,審交易,541,20170825,1",過失傷害,no,claude_draft,車禍撞人，與動物無關
+"TPDM,106,易,49,20170831,1",傷害,no,claude_draft,因餵狗起爭執，傷害人
+"TPDM,106,訴,254,20170830,2",傷害,no,claude_draft,「動物園」為地名
+"TPDM,106,簡上,13,20170803,1",傷害,no,claude_draft,狗便溺糾紛，傷害人
+"TPDM,106,審簡,1366,20170831,1",動物保護法,yes,claude_draft,勒頸虐待母犬致死
+"TPSM,106,台上,2389,20170803",家暴殺人,unverified,claude_draft,evidence 為空，家暴殺人案需看全文
+"ILDM,106,簡上,33,20170815,1",違反動物保護法,yes,claude_draft,放置毒餌毒殺他人之犬
+"CHDM,106,交簡,1885,20170830,1",公共危險,no,claude_draft,閃避犬隻自撞，動物未受害
+"CHDM,106,簡,1845,20170828,1",過失傷害,no,claude_draft,犬隻咬傷他人
+"CHDM,106,易,1064,20170831,1",傷害,no,claude_draft,遛狗糾紛，傷害人
+"CHDM,106,易,818,20170809,1",違反動物保護法等,yes,claude_draft,多次將貓重摔致死
+"CTDM,106,易,117,20170817,1",傷害,no,claude_draft,養狗糾紛，傷害人
+"CTDM,106,簡,1310,20170822,1",傷害,no,claude_draft,犬隻便溺糾紛
+"CTDM,106,簡,1805,20170817,1",傷害,no,claude_draft,怕狗傷害而與人爭執，持木棍傷人
+"KSHM,106,上易,420,20170822,1",毀棄損壞,no,claude_draft,狗籠被噴漆，動物未受害
+"KSHM,106,上訴,583,20170823,1",殺人未遂等,no,claude_draft,證人證詞提到跟狗玩
+"TPHM,106,上訴,757,20170829,1",妨害自由等,no,claude_draft,命被害人學狗爬（羞辱人）
+"TPHM,104,上訴,2506,20170822,1",殺人未遂等,unverified,claude_draft,evidence 為空，需看全文
+"TPHM,106,上易,1254,20170809,1",傷害,no,claude_draft,社區流浪貓問題起口角
+"TPHM,106,交上易,279,20170829,1",過失傷害,no,claude_draft,車禍擦撞，與動物無關
+"TPHM,106,上易,1340,20170802,1",傷害等,no,claude_draft,犬吠擾鄰
+"TPHM,106,上易,1148,20170803,1",恐嚇,no,claude_draft,持槍狀物恐嚇人
+"TPHM,106,上易,1607,20170809,1",毀損,no,claude_draft,evidence 無動物內容
+"TPHM,106,上訴,894,20170801,1",殺人未遂等,no,claude_draft,被告曾託人照顧狗
+"TPHM,106,上易,1439,20170822,1",恐嚇等,uncertain,claude_draft,有人丟死狗恐嚇，不確定是否為被告
+"TTDM,106,訴,30,20170831,1",公共危險,uncertain,claude_draft,放火波及狗屋，不確定狗是否受害
+"TCDM,106,交易,866,20170829,1",過失傷害,uncertain,claude_draft,車禍使菜籃內小狗摔出，不確定是否為被告造成
+"TCDM,106,中簡,1896,20170831,1",妨害自由,no,claude_draft,遊戲帳號「白貓仔」
+"TCDM,106,簡上,242,20170823,1",妨害自由等,no,claude_draft,evidence 無動物內容
+"TCDM,106,交易,174,20170814,1",公共危險,no,claude_draft,證人牽狗出門，背景
+"TCDM,106,易,2633,20170831,1",妨害自由,no,claude_draft,恐嚇人，與動物無關
+"TCDM,106,訴,512,20170816,1",公共危險,no,claude_draft,被害人養看門犬，背景

@@ -3,7 +3,8 @@ Stage 1 v2: Animal Protection Act documents by cited statutes OR title.
 
 - statutes: cites_animal_protection_act from data/structured (criminal articles of the act
   in the statutes appendix, 主文 or reasons; see judgment_parser.py)
-- title:    the original Stage 1 title match
+- title:    title contains 動物保護法 but not 野生動物保育法 / 動物傳染病 / 動物用藥
+            (same rule as the v1 script filter_stage1_animal_protection_law.py)
 Wildlife Act documents (title contains 野生動物) are dropped: poaching and wildlife trade
 are out of scope. Non-criminal documents (JID court code 4th character != M) are dropped.
 
@@ -25,7 +26,8 @@ from tqdm import tqdm
 
 STRUCTURED_DIR = "data/structured"
 PARQUET_DIR = "data/processed"
-STAGE1_V1_CSV = "data/filtered/criminal_judgments_tagged_20261002_103027.csv"
+TITLE_INCLUDE = "動物保護法"
+TITLE_EXCLUDE = "野生動物保育法|動物傳染病|動物用藥"
 SUMMARY_CSV = glob.glob("data/processed/*_summary.csv")[0]
 OUTPUT_FILE = Path("data/filtered/stage1_v2.csv")
 
@@ -101,10 +103,11 @@ def animal_basis(docs: pd.DataFrame) -> pd.Series:
 
 
 def main():
-    v1 = pd.read_csv(
-        STAGE1_V1_CSV, usecols=["jid", "animal_case_stage1"], low_memory=False
-    )
-    title_jids = set(v1.loc[v1["animal_case_stage1"].eq(True), "jid"])
+    titles = pd.read_csv(SUMMARY_CSV, usecols=["jid", "title"], dtype=str)
+    titles = titles.drop_duplicates("jid").set_index("jid")["title"]
+    t = titles.fillna("")
+    title_match = t.str.contains(TITLE_INCLUDE) & ~t.str.contains(TITLE_EXCLUDE)
+    title_jids = set(title_match[title_match].index)
 
     parts = []
     for f in tqdm(
@@ -118,8 +121,6 @@ def main():
     docs = pd.concat(parts, ignore_index=True)
     docs["animal_basis"] = animal_basis(docs)
 
-    titles = pd.read_csv(SUMMARY_CSV, usecols=["jid", "title"], dtype=str)
-    titles = titles.drop_duplicates("jid").set_index("jid")["title"]
     docs["title"] = docs["jid"].map(titles)
 
     by_law = docs["cites_animal_protection_act"].fillna(False).astype(bool)
