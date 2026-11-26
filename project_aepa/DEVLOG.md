@@ -90,19 +90,24 @@ Facts for analysis: `facts`, else `combined`, else `attach_facts`. Judgments wit
 
 ## Next Steps
 
-1. Re-run `build_structured.py --force` (attachment fix), `build_stage1_v2.py`, then
-   `filter_stage2_v3.py --test 300`; review recall and volume.
-2. Full Stage 2 v3 run, `build_stage3_input.py`.
-3. **Check 1 (case identification)**: ~150-200 labeled cases, stratified: Stage 1
+1. **Stage 3 on the test input (2,085 candidates, prompt p2)**, planned on the A6000
+   machine: copy `data/filtered/stage3_input_test.parquet` there (or rebuild it), then
+   `vllm serve Qwen/Qwen3-8B --max-model-len 8192 --port 8000` and
+   `python scripts/filter_stage3_llm_verification_vllm.py Qwen/Qwen3-8B all 32 --test`.
+   Labels from this model are a separate file (model name in the file name); compare
+   with the MLX model on the same cases before mixing anything.
+2. **Check 1 (case identification)**: ~150-200 labeled cases, stratified: Stage 1
    convictions (LLM recall), Stage 2 core, Stage 2 tagged, and animal word without a match
    (`stage2_v3_animal_no_match.csv`, Stage 2 misses). Gate for the full LLM run. The draft
    gold set `data/labels/gold_v0.csv` still needs human review.
-4. Full Stage 3 run (~30k candidates, 2-3 days at concurrency 8, resumable). Scope rules
-   (e.g. pigeon ransom out of scope) are applied in code from the LLM answers.
-5. Unit of analysis = one defendant in one case: merge appeal levels, split co-defendants.
-6. **Check 2 (linking)**: manually review ~50 links; rebuild the defendant index from
+3. Full Stage 2 v3 run, `build_stage3_input.py`, full Stage 3 run (~22k candidates;
+   ~31 h on the Mac at concurrency 8, faster on the A6000; resumable). Scope rules (e.g.
+   pigeon ransom out of scope) are applied in code from the LLM answers. Then
+   `dvc add data/verified` and `dvc push`.
+4. Unit of analysis = one defendant in one case: merge appeal levels, split co-defendants.
+5. **Check 2 (linking)**: manually review ~50 links; rebuild the defendant index from
    `data/structured/` (fixes the co-defendant issue below).
-7. Resume analysis: control comparison with procedure-type matching, name-based linking.
+6. Resume analysis: control comparison with procedure-type matching, name-based linking.
 
 ## Known Issues
 
@@ -176,6 +181,10 @@ regenerated, so they are now tracked in git. `build_stage1_v2.py` no longer read
 output file (timestamped name, would differ on another machine); it applies the same
 title rule itself (verified: identical 441 documents). Setup and the data location table
 live in README; DEVLOG only points there. Added `CLAUDE.md` with working rules.
+
+### Resource monitor on NVIDIA
+`resource_monitor.py` detects the GPU backend once: nvidia-smi if present, else ioreg on
+macOS, else none. Memory pressure is read on macOS only.
 
 ### Stage 3 input and resume
 `build_stage3_input.py` replaces `extract_candidate_fulltext.py`: candidates = Stage 1 ∪

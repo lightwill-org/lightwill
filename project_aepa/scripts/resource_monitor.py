@@ -1,9 +1,14 @@
 """
-Background resource monitor for local LLM runs on Apple Silicon.
+Background resource monitor for local LLM runs on Apple Silicon or NVIDIA GPUs.
+
+The GPU backend is detected once at import (GPU_BACKEND):
+- "nvidia": nvidia-smi is on PATH (utilization averaged, memory summed over GPUs)
+- "apple":  macOS, read via ioreg
+- None:     no GPU metrics; memory and vLLM metrics are still sampled
 
 Samples every second (default) so short peaks are not missed:
-- GPU utilization and GPU memory (via ioreg, no sudo needed)
-- System memory used / available, swap, macOS memory pressure level
+- GPU utilization and GPU memory (no sudo needed)
+- System memory used / available, swap, macOS memory pressure level (macOS only)
 - vLLM queue metrics from /metrics (if available)
 
 Process RSS is not tracked: on Apple Silicon, model weights and KV cache live in
@@ -23,7 +28,9 @@ Usage:
 
 import os
 import re
+import shutil
 import subprocess
+import sys
 import threading
 import time
 
@@ -43,7 +50,49 @@ PRESSURE_LABELS = {1: "normal", 2: "warning", 4: "critical"}
 GB = 1024**3
 
 
+def detect_gpu_backend() -> str | None:
+    if shutil.which("nvidia-smi"):
+        return "nvidia"
+    if sys.platform == "darwin":
+        return "apple"
+    return None
+
+
+GPU_BACKEND = detect_gpu_backend()
+
+
+def read_nvidia_gpu() -> tuple[float | None, float | None]:
+    try:
+        out = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=utilization.gpu,memory.used",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout
+        rows = [
+            [float(x) for x in line.split(",")] for line in out.strip().splitlines()
+        ]
+    except Exception:
+        return None, None
+    if not rows:
+        return None, None
+    util = sum(r[0] for r in rows) / len(rows)
+    return util, sum(r[1] for r in rows) / 1024  # MiB → GiB
+
+
 def read_gpu() -> tuple[float | None, float | None]:
+    if GPU_BACKEND == "nvidia":
+        return read_nvidia_gpu()
+    if GPU_BACKEND == "apple":
+        return read_apple_gpu()
+    return None, None
+
+
+def read_apple_gpu() -> tuple[float | None, float | None]:
     try:
         out = subprocess.run(
             ["ioreg", "-r", "-d", "1", "-w", "0", "-c", "IOAccelerator"],
@@ -62,6 +111,8 @@ def read_gpu() -> tuple[float | None, float | None]:
 
 
 def read_memory_pressure() -> int | None:
+    if sys.platform != "darwin":
+        return None
     try:
         out = subprocess.run(
             ["sysctl", "-n", "kern.memorystatus_vm_pressure_level"],
@@ -167,7 +218,7 @@ class ResourceMonitor:
         t0 = df["time"].iloc[0]
 
         print(
-            f"\nResources ({len(df)} samples every {self.interval:g}s; max is a lower bound of the true peak):"
+            f"\nResources (GPU backend: {GPU_BACKEND}; {len(df)} samples every {self.interval:g}s; max is a lower bound of the true peak):"
         )
         print(f"  {'':18s} {'mean':>8s} {'p95':>8s} {'max':>8s}  max at")
         for col, label in [
