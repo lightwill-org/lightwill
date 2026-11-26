@@ -37,8 +37,13 @@ STATUTE_RE = re.compile(
 )
 OTHER_HEADS = {"附記事項"}  # ends the previous section; not stored
 ENUM_PREFIX_RE = re.compile(r"^[一二三四五六七八九十]{1,3}、")
-ATTACH_RE = re.compile(rf"附件{NUM}*(?:[：:]|$)")
-TABLE_RE = re.compile(rf"附表{NUM}*(?:[：:]|$)")
+_OPEN, _CLOSE = r"[【〔\[（(]?", r"[】〕\]）)]?"  # 【附件】 〔附表一〕
+ATTACH_RE = re.compile(rf"{_OPEN}附件{NUM}*{_CLOSE}(?:[：:]|$)")
+TABLE_RE = re.compile(rf"{_OPEN}附表{NUM}*{_CLOSE}(?:[：:]|$)")
+# Some courts append the indictment right after the statutes without an 附件 heading
+INDICTMENT_HEAD_RE = re.compile(
+    r"(?:臺灣|台灣|福建).{0,16}檢察署.{0,12}(?:起訴書|處刑書|併辦意旨書)"
+)
 CLOSING_RE = re.compile(rf"中華民國{NUM}+年{NUM}+月{NUM}+日")
 MAX_HEADING_LEN = 20
 
@@ -171,7 +176,7 @@ def norm(line: str) -> str:
 
 def heading_kind(n: str) -> str | None:
     """Classify a normalized line as a section heading, or None."""
-    if ATTACH_RE.match(n):
+    if ATTACH_RE.match(n) or INDICTMENT_HEAD_RE.fullmatch(n):
         return "attach"
     if TABLE_RE.match(n):
         return "table"

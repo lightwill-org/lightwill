@@ -11,7 +11,7 @@ Research design: [animal-abuse-crime-linkage-data-plan.md](animal-abuse-crime-li
 
 ---
 
-# Current State (updated 2026-11-24)
+# Current State (updated 2026-11-26)
 
 ## Goal
 
@@ -34,21 +34,25 @@ abort above it (macOS does not enforce RLIMIT_AS).
 
 ## Pipeline
 
+Flow diagram: [PIPELINE.md](PIPELINE.md)
+
 | # | Step | Script | Output | Status |
 |---|---|---|---|---|
 | 0 | Download and convert raw data | `download_monthly_packages.py`, `extract_rar.py`, `process_judgments.py` | `data/processed/` | ✅ |
-| 1 | Split documents into sections | `build_structured.py` (uses `judgment_parser.py`) | `data/structured/` | ✅ re-run with `--force` pending |
+| 1 | Split documents into sections | `build_structured.py` (uses `judgment_parser.py`) | `data/structured/` | 🔄 re-run with `--force` (attachment fix) |
 | 2 | Defendant name hashes and cited prior case numbers | `build_identity_index.py` | `data/index/` | ✅ (see known issues) |
 | 3 | Resolve cited case numbers to JIDs | `resolve_prior_refs.py`, `diagnose_prior_refs.py` | `data/index/prior_case_refs_resolved.parquet` | ✅ |
-| 4 | Stage 1: Animal Protection Act cases | `filter_stage1_animal_protection_law.py` (title only) | `data/filtered/criminal_judgments_tagged_*.csv` | 🔄 to be redefined |
-| 5 | Stage 2: crime-first full-text keywords | `filter_stage2_crime_first_fulltext.py` | `data/filtered/stage2_crime_first_fulltext_v2*.csv` | ✅ v2, to move to facts sections |
-| 6 | Collect candidate texts in one file | `extract_candidate_fulltext.py` | `data/filtered/candidates_fulltext_v2.parquet` | ✅ |
-| 7 | Stage 3: LLM verification | `filter_stage3_llm_verification_vllm.py`, `evaluate_stage3.py` | `data/filtered/…_vllm_*.csv` | 🔄 tested on 50 cases only |
+| 4 | Stage 1 v2: Animal Protection Act by cited articles or title | `build_stage1_v2.py` | `data/filtered/stage1_v2.csv` | ✅ (re-run after step 1) |
+| 5 | Stage 2 v3: find candidates in facts sections (tags only) | `filter_stage2_v3.py` | `data/filtered/stage2_v3*.csv` | 🔜 test run |
+| 6 | Build LLM input: Stage 1 ∪ Stage 2, passages from facts | `build_stage3_input.py` | `data/filtered/stage3_input.parquet` | 🔜 |
+| 7 | Stage 3: LLM judges every candidate (resumable) | `filter_stage3_llm_verification_vllm.py`, `evaluate_stage3.py` | `data/verified/stage3_<model>.csv` | 🔜 |
 | 8 | Exploratory analysis | `analyze_stage1_linkage.py`, `build_control_comparison.py` | `data/analysis/` | ⏸ paused until data checks pass |
 
 Support scripts: `resource_monitor.py` (GPU/RAM sampling, memory guard),
 `check_identity_linkage.py` (name / prior availability by year).
-Kept for reference only: `filter_stage3_llm_verification{,_fast,_ultra}.py` (Ollama versions).
+Kept for reference only: `filter_stage3_llm_verification{,_fast,_ultra}.py` (Ollama versions),
+`filter_stage1_animal_protection_law.py`, `filter_stage2_crime_first_fulltext.py` (v2) and
+`extract_candidate_fulltext.py` (replaced by steps 4-6 above).
 
 ### Commands
 
@@ -62,12 +66,14 @@ python scripts/build_structured.py --report      # coverage report only
 python scripts/build_identity_index.py
 python scripts/resolve_prior_refs.py [memory_limit_gb]
 
-# 5-6. Stage 2 and candidate texts
-python scripts/filter_stage2_crime_first_fulltext.py
-python scripts/extract_candidate_fulltext.py
+# 4-6. Stage 1, Stage 2, LLM input (add --test for a 300-batch sample + Stage 1 batches)
+python scripts/build_stage1_v2.py
+python scripts/filter_stage2_v3.py [--test 300]
+python scripts/build_stage3_input.py [--test]
 
-# 7. Stage 3 (needs a vLLM server on localhost:8000 serving Qwen3-8B MLX 4-bit)
-python scripts/filter_stage3_llm_verification_vllm.py <model> [limit] [concurrency=8]
+# 7. Stage 3 (needs a vLLM server on localhost:8000 serving Qwen3-8B MLX 4-bit).
+#    Resumable: re-running skips documents already labelled.
+python scripts/filter_stage3_llm_verification_vllm.py <model> [limit] [concurrency=8] [--test]
 python scripts/evaluate_stage3.py                # against data/labels/gold_v0.csv
 
 # 8. Exploratory analysis
@@ -88,17 +94,19 @@ Facts for analysis: `facts`, else `combined`, else `attach_facts`. Judgments wit
 
 ## Next Steps
 
-1. Re-run `build_structured.py --force` (Animal Protection Act crime-article rules).
-2. Redefine Stage 1 = `cites_animal_protection_act` ∪ title match, minus Wildlife Act cases.
-3. Point Stage 2 keywords and the Stage 3 LLM at facts sections instead of full text.
-4. **Check 1 (case identification)**: one labeled sample of ~150-200 cases covering Stage 1,
-   Stage 2 candidates, and documents Stage 2 missed; measure precision and recall. Gate for
-   the full LLM run. The draft gold set `data/labels/gold_v0.csv` still needs human review.
-5. Full Stage 3 run (~48 h at concurrency 8; add resume support first).
-6. Unit of analysis = one defendant in one case: merge appeal levels, split co-defendants.
-7. **Check 2 (linking)**: manually review ~50 links; rebuild the defendant index from
+1. Re-run `build_structured.py --force` (attachment fix), `build_stage1_v2.py`, then
+   `filter_stage2_v3.py --test 300`; review recall and volume.
+2. Full Stage 2 v3 run, `build_stage3_input.py`.
+3. **Check 1 (case identification)**: ~150-200 labeled cases, stratified: Stage 1
+   convictions (LLM recall), Stage 2 core, Stage 2 tagged, and animal word without a match
+   (`stage2_v3_animal_no_match.csv`, Stage 2 misses). Gate for the full LLM run. The draft
+   gold set `data/labels/gold_v0.csv` still needs human review.
+4. Full Stage 3 run (~30k candidates, 2-3 days at concurrency 8, resumable). Scope rules
+   (e.g. pigeon ransom out of scope) are applied in code from the LLM answers.
+5. Unit of analysis = one defendant in one case: merge appeal levels, split co-defendants.
+6. **Check 2 (linking)**: manually review ~50 links; rebuild the defendant index from
    `data/structured/` (fixes the co-defendant issue below).
-8. Resume analysis: control comparison with procedure-type matching, name-based linking.
+7. Resume analysis: control comparison with procedure-type matching, name-based linking.
 
 ## Known Issues
 
@@ -109,10 +117,69 @@ Facts for analysis: `facts`, else `combined`, else `attach_facts`. Judgments wit
 - About 2-4% of documents are not criminal (JID court code 4th character `V`, e.g. payment
   orders): exclude by code.
 - Before 2000 only Supreme Court documents exist; defendant names are masked before ~2011.
+- About two thirds of summary judgments whose facts are "引用附件" do not publish the
+  attachment: no facts text. Stage 2 cannot find them; only Stage 1 (cited articles) can.
 
 ---
 
 # Log
+
+## 2026-11-26 - Stage 2 v3 and the Stage 2 / Stage 3 Split
+
+### Stage 2 v3: facts sections, no crime-title filter
+Searches only facts sections (facts, 事實及理由, attached indictment facts) of all
+criminal judgments, for an animal word and a harm word within 30 chars in one sentence.
+Stage 1 documents are scanned too, so Stage 1 convictions under the act measure recall.
+First test (300 spread batches + Stage 1 batches): recall 95.8% (343/358); ~21k matches
+outside Stage 1 projected over all batches.
+
+### Misses: mostly unpublished attachments, plus a parser bug
+All 15 missed Stage 1 convictions said their facts were in the attached indictment.
+Sampling summary judgments: ~63% refer to an attachment for facts, and ~64% of those do
+not publish it. A small share were parser misses: 【附件】 with brackets, or the indictment
+appended without any 附件 heading. `judgment_parser.py` now accepts both (4 of the 15
+recovered). Missing vocabulary: dog breeds (吉娃娃, 貴賓…) and 鬥 (鬥狗, 鬥雞) added.
+
+### Tag, don't filter
+A first fix removed noise by rules (quoted nicknames, product words, owner's dog biting,
+pigeon ransom). Rejected: each rule can drop true cases (e.g. 黑貓 nearly removed a real
+cat-drowning case; short quoted threats like 「要殺你的狗」), the rules were fitted to the
+test sample, and each needs a justification. Decision: Stage 2 finds candidates and only
+removes text that cannot be facts; likely noise is tagged. Stage 3 makes every judgment:
+the LLM answers factual questions and scope is decided in code (pigeon ransom: animal
+threatened by someone other than the defendant → no). Check 1 samples by tag to confirm
+the LLM rejects tagged noise on its own. Cost: ~30k LLM candidates instead of ~16k.
+
+### Test run after the changes (300 spread batches + Stage 1 batches)
+- Stage 1 v2 after the parser fix: 524 documents, 362 convictions under the act (was 364:
+  an indictment appended without a 附件 heading used to be read as the statutes appendix,
+  so its charged articles counted as applied ones).
+- Stage 2 recall on Stage 1 convictions: 97.5% (347/356); untagged matches only: 92.4%.
+- Judgments whose facts exist only by reference to an unpublished attachment: 59,316 of
+  321,421 with a facts section (18%). Largest coverage limit of keyword search.
+- Matches outside Stage 1: 1,561 (core 809; tags: quoted/product 284, owner/traffic 233,
+  pigeon ransom 237). Projected over all batches: ~21k (core ~11k).
+- Animal word in facts but no match: 2,581 (Check 1 stratum for Stage 2 misses).
+- Stage 3 test input: 2,085 candidates; passages from facts 95%, mean 842 chars.
+
+### First 50 LLM labels on the new input (prompt p1)
+5.1 sec/case at concurrency 8 (~31 h for ~22k candidates), 50/50 parsed. Stage 1
+documents 10/10 yes; tagged noise 15/16 no (nicknames, pigeon ransom, dog bites). Errors:
+- `animal_harmed_person` was read as "animal harmed by a person": two shootings of birds
+  by defendants got this label and were missed. Renamed `animal_attacked_person`, with
+  the animal named as the attacker.
+- Idiom 雞犬不寧 in a threat was labelled a threatened animal: idioms added to
+  `not_real_animal`.
+- Co-defendants were labelled `other_person`: `defendant` now includes co-defendants.
+Outputs now carry a prompt version (`PROMPT_VERSION`, now p2) so labels from different
+prompts never mix in one resumable file.
+
+### Stage 3 input and resume
+`build_stage3_input.py` replaces `extract_candidate_fulltext.py`: candidates = Stage 1 ∪
+Stage 2, passages around animal mentions taken from facts sections (fallback: reasons,
+then full text). Stage 1 documents go through the LLM for harm type and as known
+positives for LLM recall. The vLLM script now reads this file and skips documents
+already labelled, so a multi-day run can be restarted.
 
 ## 2026-11-24 - Control Comparison, Source Check, Structuring
 

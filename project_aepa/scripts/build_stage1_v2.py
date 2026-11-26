@@ -20,9 +20,11 @@ import glob
 from pathlib import Path
 
 import pandas as pd
+from judgment_parser import ANIMAL_ACT_CRIME_RE, norm
 from tqdm import tqdm
 
 STRUCTURED_DIR = "data/structured"
+PARQUET_DIR = "data/processed"
 STAGE1_V1_CSV = "data/filtered/criminal_judgments_tagged_20261002_103027.csv"
 SUMMARY_CSV = glob.glob("data/processed/*_summary.csv")[0]
 OUTPUT_FILE = Path("data/filtered/stage1_v2.csv")
@@ -39,10 +41,14 @@ COLS = [
     "main_dismissed",
     "main_revoked",
     "facts_start",
-    "combined_start",
     "attach_facts_start",
     "defendant_hashes",
     "n_defendants_masked",
+    *[
+        f"{s}_{p}"
+        for s in ("main", "statutes", "reasons", "combined")
+        for p in ("start", "end")
+    ],
 ]
 COURT_LEVELS = {"D": "district", "E": "summary_court", "H": "high", "S": "supreme"}
 
@@ -60,6 +66,40 @@ def document_role(row) -> str:
     return "other_judgment"
 
 
+def animal_basis(docs: pd.DataFrame) -> pd.Series:
+    """
+    Where the act's criminal articles appear:
+    - main:         in 主文, so the defendant was convicted (or sentenced) under the act
+    - statutes:     in the statutes appendix, which lists the articles applied
+    - reasons_only: only discussed in the reasons; often an acquitted or unproven charge
+                    (e.g. "因認被告涉犯動物保護法第25條罪嫌…" then 不另為無罪), needs review
+    - none:         title match only
+    """
+    basis = pd.Series("none", index=docs.index)
+    for batch, group in tqdm(docs.groupby("batch"), desc="Locating citations"):
+        texts = pd.read_parquet(f"{PARQUET_DIR}/{batch}", columns=["jid", "full_text"])
+        texts = texts.set_index("jid")["full_text"]
+        for idx, row in group.iterrows():
+            text = texts.get(row["jid"])
+            if not isinstance(text, str):
+                continue
+
+            def found(*sections: str) -> bool:
+                part = "".join(
+                    text[max(row[f"{s}_start"], 0) : max(row[f"{s}_end"], 0)]
+                    for s in sections
+                )
+                return bool(ANIMAL_ACT_CRIME_RE.search(norm(part)))
+
+            if found("main"):
+                basis[idx] = "main"
+            elif found("statutes"):
+                basis[idx] = "statutes"
+            elif found("reasons", "combined"):
+                basis[idx] = "reasons_only"
+    return basis
+
+
 def main():
     v1 = pd.read_csv(
         STAGE1_V1_CSV, usecols=["jid", "animal_case_stage1"], low_memory=False
@@ -74,8 +114,9 @@ def main():
         keep = df["cites_animal_protection_act"].fillna(False) | df["jid"].isin(
             title_jids
         )
-        parts.append(df[keep])
+        parts.append(df[keep].assign(batch=Path(f).name))
     docs = pd.concat(parts, ignore_index=True)
+    docs["animal_basis"] = animal_basis(docs)
 
     titles = pd.read_csv(SUMMARY_CSV, usecols=["jid", "title"], dtype=str)
     titles = titles.drop_duplicates("jid").set_index("jid")["title"]
@@ -116,7 +157,16 @@ def main():
     print("\nCourt level × document role:")
     print(pd.crosstab(docs["court_level"], docs["role"], margins=True).to_string())
 
-    conv = docs[docs["role"] == "conviction"]
+    print("\nDocument role × where the act's criminal articles appear:")
+    print(pd.crosstab(docs["role"], docs["animal_basis"], margins=True).to_string())
+
+    docs["animal_conviction"] = (docs["role"] == "conviction") & docs[
+        "animal_basis"
+    ].isin(["main", "statutes"])
+    conv = docs[docs["animal_conviction"]]
+    print(
+        "\nBelow: convictions under the act (conviction with the act in 主文 or statutes appendix)"
+    )
     print(
         f"\nConvictions: {len(conv):,} | with facts section: {conv['has_facts'].mean() * 100:.1f}% "
         f"| with named defendants: {(conv['n_defendants_named'] > 0).mean() * 100:.1f}%"
@@ -140,11 +190,14 @@ def main():
         "court_level",
         "doc_kind",
         "role",
+        "animal_basis",
+        "animal_conviction",
         "source",
         "title",
         "has_facts",
         "n_defendants_named",
         "n_defendants_masked",
+        "batch",
     ]
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     docs[cols].sort_values("jid").to_csv(OUTPUT_FILE, index=False)

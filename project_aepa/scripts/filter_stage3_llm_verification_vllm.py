@@ -7,12 +7,18 @@ Step 2 (only step-1 yes/uncertain): harm type, animal type, court finding.
 Prior animal-related convictions (signal C) are detected separately by regex.
 See section 7.3.1 of animal-abuse-crime-linkage-data-plan.md.
 
+Input: data/filtered/stage3_input.parquet (build_stage3_input.py), which holds the
+passages around animal mentions in each candidate's facts sections.
+
+Resumable: results go to a fixed file per model and input; documents already labelled
+(step 1 parsed) are skipped on the next run, so an interrupted run can be restarted.
+
 Prerequisites:
-1. python scripts/extract_candidate_fulltext.py
+1. python scripts/build_stage3_input.py [--test]
 2. vllm serve <model> --max-model-len 8192 --port 8000
 
 Usage:
-    python scripts/filter_stage3_llm_verification_vllm.py <model> [limit] [concurrency]
+    python scripts/filter_stage3_llm_verification_vllm.py <model> [limit|all] [concurrency] [--test]
     python scripts/filter_stage3_llm_verification_vllm.py Qwen/Qwen3-8B-MLX-4bit 50 8
 """
 
@@ -28,22 +34,18 @@ import requests
 from resource_monitor import ResourceMonitor
 from tqdm import tqdm
 
+# Bump when prompts or schemas change: results of different versions never mix
+PROMPT_VERSION = "p2"
 VLLM_BASE_URL = "http://localhost:8000/v1"
 VLLM_METRICS_URL = "http://localhost:8000/metrics"
-CANDIDATES_FILE = "data/filtered/candidates_fulltext_v2.parquet"
+INPUT_FILE = "data/filtered/stage3_input{suffix}.parquet"
 OUTPUT_DIR = "data/verified"
-
-WINDOW = 300
-MAX_SNIPPET_CHARS = 3000
-
-ANIMAL_PATTERN = re.compile(
-    r"動物|寵物|犬|狗|貓|家畜|家禽|豬|牛|羊|雞|鴨|鵝|兔|鳥|鸚鵡|猴|魚"
-)
+SAVE_EVERY = 200
 
 ANIMAL_FATES = [
     "nothing_happened_to_animal",
     "not_real_animal",
-    "animal_harmed_person",
+    "animal_attacked_person",
     "animal_injured_or_killed",
     "animal_abandoned_or_neglected",
     "animal_threatened",
@@ -101,14 +103,14 @@ STEP1_PROMPT = """你是台灣刑事判決的分析助理。你會看到一份�
 1. evidence：引用描述「動物本身遭遇」的原文（不超過 100 字）。如果動物本身沒有遭遇任何事，填空字串。
 2. animal_fate：動物本身遭遇了什麼？
    - nothing_happened_to_animal：動物只是被提到，本身沒有受傷、被遺棄或被威脅
-   - not_real_animal：不是真的動物（比喻、人名綽號、地名店名、物品名）
-   - animal_harmed_person：動物咬傷或攻擊人
+   - not_real_animal：不是真的動物（比喻、成語如「雞犬不寧」、人名綽號、地名店名、物品名）
+   - animal_attacked_person：動物是加害者，咬傷、撞傷或攻擊人
    - animal_injured_or_killed：動物被打、被殺、被毒、被撞、受傷或死亡
    - animal_abandoned_or_neglected：動物被遺棄、棄養，或被疏於照顧而受害
    - animal_threatened：有人明確揚言要傷害或殺死動物
 3. actor：造成動物受害或威脅動物的人是誰？
    - not_applicable：動物沒有受害也沒有被威脅
-   - defendant：本案被告
+   - defendant：本案被告（包括共同被告、共犯）
    - other_person：告訴人、證人或其他人
    - unknown：看不出來是誰
 
@@ -135,27 +137,6 @@ STEP2_PROMPT = """你是台灣刑事判決的分析助理。已知本案被告�
 
 段落：
 {text}"""
-
-
-def extract_animal_passages(full_text: str) -> tuple[str, bool]:
-    """Collect every animal mention with surrounding context; merge overlaps."""
-    if not isinstance(full_text, str) or not full_text:
-        return "", False
-
-    spans = []
-    for m in ANIMAL_PATTERN.finditer(full_text):
-        start, end = max(0, m.start() - WINDOW), min(len(full_text), m.end() + WINDOW)
-        if spans and start <= spans[-1][1]:
-            spans[-1][1] = max(spans[-1][1], end)
-        else:
-            spans.append([start, end])
-
-    if not spans:
-        return re.sub(r"\s+", " ", full_text[:MAX_SNIPPET_CHARS]).strip(), False
-
-    passages = [re.sub(r"\s+", " ", full_text[s:e]).strip() for s, e in spans]
-    joined = "\n……\n".join(passages)
-    return joined[:MAX_SNIPPET_CHARS], len(joined) > MAX_SNIPPET_CHARS
 
 
 def call_vllm(
@@ -213,12 +194,8 @@ def decide_involved(animal_fate: str | None, actor: str | None) -> str:
 
 
 def label_case(model: str, row: dict) -> dict:
-    snippet, truncated = extract_animal_passages(row["full_text"])
-    result = {
-        "jid": row["jid"],
-        "snippet_chars": len(snippet),
-        "snippet_truncated": truncated,
-    }
+    snippet = row["passages"]
+    result = {"jid": row["jid"]}
     if not snippet:
         return {**result, "step1_ok": False, "raw_response": "NO_TEXT"}
 
@@ -241,25 +218,36 @@ def label_case(model: str, row: dict) -> dict:
 
 
 def main():
-    model = sys.argv[1] if len(sys.argv) > 1 else "Qwen/Qwen3-8B-MLX-4bit"
-    limit = int(sys.argv[2]) if len(sys.argv) > 2 else None
-    concurrency = int(sys.argv[3]) if len(sys.argv) > 3 else 8
+    flags = [a for a in sys.argv[1:] if a.startswith("--")]
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    model = args[0] if args else "Qwen/Qwen3-8B-MLX-4bit"
+    limit = int(args[1]) if len(args) > 1 and args[1] != "all" else None
+    concurrency = int(args[2]) if len(args) > 2 else 8
+    suffix = "_test" if "--test" in flags else ""
 
     print(f"Model: {model} | concurrency: {concurrency}")
     print(f"Smoke test: {call_vllm(model, '只回答：好', max_tokens=5)}")
 
-    df = pd.read_parquet(CANDIDATES_FILE)
+    df = pd.read_parquet(INPUT_FILE.format(suffix=suffix))
     if limit:
         df = df.head(limit)
-    print(f"Cases: {len(df):,}")
 
     Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
     model_tag = model.split("/")[-1]
-    timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-    output_file = Path(OUTPUT_DIR) / f"labeled_vllm_{model_tag}_{timestamp}.csv"
+    output_file = Path(OUTPUT_DIR) / f"stage3_{model_tag}_{PROMPT_VERSION}{suffix}.csv"
+    labels_file = output_file.with_name(output_file.stem + "_labels.csv")
 
-    rows = df[["jid", "title", "full_text"]].to_dict("records")
-    results = []
+    done = pd.DataFrame()
+    if labels_file.exists():
+        done = pd.read_csv(labels_file)
+        done = done[done["step1_ok"].eq(True)]
+    todo = df[~df["jid"].isin(done.get("jid", []))]
+    print(
+        f"Cases: {len(df):,} | already labelled: {len(done):,} | to do: {len(todo):,}"
+    )
+
+    rows = todo[["jid", "title", "passages"]].to_dict("records")
+    results = done.to_dict("records")
     monitor = ResourceMonitor(vllm_metrics_url=VLLM_METRICS_URL)
     monitor.start()
     start = time.time()
@@ -273,21 +261,23 @@ def main():
             results.append(future.result())
             pbar.update(1)
             pbar.set_postfix_str(monitor.latest())
-            if i % 500 == 0:
-                pd.DataFrame(results).to_csv(output_file, index=False)
+            if i % SAVE_EVERY == 0:
+                pd.DataFrame(results).to_csv(labels_file, index=False)
 
     elapsed = time.time() - start
     monitor.stop()
     df_res = pd.DataFrame(results)
-    df_out = df.drop(columns=["full_text"]).merge(df_res, on="jid", how="left")
+    df_res.to_csv(labels_file, index=False)
+    df_out = df.drop(columns=["passages"]).merge(df_res, on="jid", how="left")
     df_out.to_csv(output_file, index=False)
 
     n = len(df_res)
-    ok = df_res[df_res["step1_ok"] == True]  # noqa: E712
-    print(f"\nTime: {elapsed / 60:.1f} min | {elapsed / n:.2f} sec/case")
-    print(f"Estimate for 17,248 cases: {elapsed / n * 17248 / 3600:.1f} hours")
+    ok = df_res[df_res["step1_ok"].eq(True)]
+    if rows:
+        per_case = elapsed / len(rows)
+        print(f"\nTime: {elapsed / 60:.1f} min | {per_case:.2f} sec/case")
+        print(f"Estimate for 30,000 cases: {per_case * 30000 / 3600:.1f} hours")
     print(f"Step 1 parsed OK: {len(ok)}/{n}")
-    print(f"Snippet truncated: {df_res['snippet_truncated'].sum()}")
     if len(ok):
         print("\ninvolved:\n" + ok["involved"].value_counts().to_string())
         print("\nanimal_fate:\n" + ok["animal_fate"].value_counts().to_string())
